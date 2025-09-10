@@ -1,0 +1,14 @@
+firebase-functions>=0.1.0,<0.2.0
+firebase-admin>=6.0.0
+
+# 기존 fastAPI 앱 의존성
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pandas>=2.0.0
+python-multipart>=0.0.6
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+numpy>=1.24.0
+
+# 어댑터 라이브러리
+mangum>=0.17.0
