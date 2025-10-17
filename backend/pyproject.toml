@@ -1,0 +1,16 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.14.2",
+    "fastapi>=0.119.0",
+    "firebase-admin>=7.1.0",
+    "numpy>=2.3.4",
+    "pandas>=2.3.3",
+    "python-dotenv>=1.1.1",
+    "requests>=2.32.5",
+    "uvicorn>=0.37.0",
+]
