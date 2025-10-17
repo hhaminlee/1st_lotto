@@ -68,11 +68,43 @@ class UserSelection(BaseModel):
     user_id: str = None
 
 def load_data():
-    global lotto_history_df
+    """로또 역대 당첨 번호 데이터 로드 (Firebase 우선, CSV 백업)"""
+    global lotto_history_df, db
     try:
+        if db:
+            # Firebase에서 데이터 로드 시도
+            collection_ref = db.collection('lotto_history')
+            docs = collection_ref.order_by('draw_no').get()
+            
+            if docs:
+                # Firebase 데이터를 DataFrame으로 변환
+                firebase_data = []
+                for doc in docs:
+                    data = doc.to_dict()
+                    firebase_data.append({
+                        'draw_no': data['draw_no'],
+                        'num1': data['num1'], 'num2': data['num2'],
+                        'num3': data['num3'], 'num4': data['num4'],
+                        'num5': data['num5'], 'num6': data['num6'],
+                        'bonus': data['bonus']
+                    })
+                
+                lotto_history_df = pd.DataFrame(firebase_data)
+                print(f"Firebase에서 로또 데이터 로드 완료: {len(firebase_data)}회차")
+                return
+            else:
+                print("Firebase에 로또 데이터가 없음, CSV 파일에서 로드 시도")
+        
+        # Firebase 실패시 CSV 파일에서 로드 (백업)
         lotto_history_df = pd.read_csv("lotto_history.csv")
+        print(f"CSV에서 로또 데이터 로드 완료: {len(lotto_history_df)}회차")
+        
     except FileNotFoundError:
         lotto_history_df = pd.DataFrame()
+        print("로또 데이터 파일을 찾을 수 없음")
+    except Exception as e:
+        lotto_history_df = pd.DataFrame()
+        print(f"로또 데이터 로드 실패: {e}")
 
 def load_weekly_stats():
     global weekly_stats, db
@@ -193,18 +225,48 @@ def check_weekly_winner():
     save_weekly_stats()
 
 def reset_weekly_stats():
-    """주간 통계 초기화"""
-    global weekly_stats
+    """주간 통계 초기화 (Firebase 기반, 최적화된 히스토리 저장)"""
+    global weekly_stats, db
     current_week = get_current_week()
     
     # 새로운 주가 시작되면 초기화
-    if weekly_stats["current_week"] != current_week:
+    if weekly_stats.get("current_week") != current_week:
+        # 이전 주 데이터가 있고 당첨 결과가 있으면 요약본만 저장
+        if db and weekly_stats.get("users") and weekly_stats.get("results"):
+            try:
+                old_week = weekly_stats.get("current_week", "unknown")
+                results = weekly_stats.get("results", {})
+                
+                # 최소한의 통계 데이터만 저장
+                history_summary = {
+                    "week": old_week,
+                    "period": f"{old_week} 주차",
+                    "total_participants": len(weekly_stats.get("users", [])),
+                    "draw_no": results.get("draw_no"),
+                    "winning_numbers": results.get("winning_numbers"),
+                    "bonus_number": results.get("bonus_number"),
+                    "winners": results.get("summary", {
+                        "1등": 0, "2등": 0, "3등": 0, "4등": 0, "5등": 0, "낙첨": 0
+                    }),
+                    "archived_at": datetime.now().isoformat()
+                }
+                
+                # history 컬렉션에 요약 저장 (개인 번호는 저장하지 않음)
+                backup_ref = db.collection('weekly_history').document(old_week)
+                backup_ref.set(history_summary)
+                print(f"주간 통계 요약 저장 완료: {old_week} ({history_summary['total_participants']}명 참여)")
+                
+            except Exception as e:
+                print(f"주간 히스토리 저장 실패: {e}")
+        
+        # 새로운 주 초기화 (개인 데이터 완전 삭제)
         weekly_stats = {
             "users": [],
             "current_week": current_week,
             "results": {}
         }
         save_weekly_stats()
+        print(f"주간 통계 초기화 완료: {current_week} (개인 데이터 삭제됨)")
 
 # Initial data load
 load_data()
@@ -268,7 +330,8 @@ def get_analysis(strategy: Optional[str] = None):
 
 @app.post("/api/update")
 def update_history():
-    global lotto_history_df
+    """로또 역대 당첨 번호 업데이트 (Firebase 우선 저장)"""
+    global lotto_history_df, db
     try:
         main_page_res = requests.get("https://www.dhlottery.co.kr/common.do?method=main", timeout=10)
         soup = BeautifulSoup(main_page_res.text, "html.parser")
@@ -283,8 +346,30 @@ def update_history():
     if last_saved_no < latest_no:
         new_draws = [get_lotto_win_numbers_api(i) for i in range(int(last_saved_no) + 1, latest_no + 1) if get_lotto_win_numbers_api(i) is not None]
         if new_draws:
-            new_df = pd.DataFrame(new_draws)
-            new_df.to_csv("lotto_history.csv", mode='a', header=False, index=False, encoding='utf-8-sig')
+            # Firebase에 새로운 회차 데이터 저장
+            if db:
+                try:
+                    batch = db.batch()
+                    collection_ref = db.collection('lotto_history')
+                    
+                    for draw_data in new_draws:
+                        doc_ref = collection_ref.document(str(draw_data['draw_no']))
+                        batch.set(doc_ref, draw_data)
+                    
+                    batch.commit()
+                    print(f"Firebase에 새로운 회차 저장 완료: {len(new_draws)}개 회차")
+                    
+                except Exception as e:
+                    print(f"Firebase 저장 실패, CSV 백업 저장: {e}")
+                    # Firebase 실패시 CSV 백업 저장
+                    new_df = pd.DataFrame(new_draws)
+                    new_df.to_csv("lotto_history.csv", mode='a', header=False, index=False, encoding='utf-8-sig')
+            else:
+                # Firebase 연결이 없으면 CSV에 저장
+                new_df = pd.DataFrame(new_draws)
+                new_df.to_csv("lotto_history.csv", mode='a', header=False, index=False, encoding='utf-8-sig')
+                print("Firebase 연결 없음, CSV에 저장")
+            
             load_data() # Reload the data
             
             # 새로운 추첨 결과가 있으면 주간 당첨자 확인
@@ -351,3 +436,88 @@ def manual_reset_week():
     }
     save_weekly_stats()
     return {"message": "주간 통계가 초기화되었습니다."}
+
+@app.post("/api/migrate-local-data")
+def migrate_local_data():
+    """로컬 JSON 데이터를 Firebase로 이식 (일회성 마이그레이션)"""
+    global weekly_stats, db
+    try:
+        # 로컬 JSON 파일 읽기
+        if os.path.exists("weekly_stats.json"):
+            with open("weekly_stats.json", "r", encoding="utf-8") as f:
+                local_data = json.load(f)
+            
+            if db:
+                # Firebase에 직접 저장
+                doc_ref = db.collection('weekly_stats').document('current')
+                doc_ref.set(local_data)
+                
+                # 글로벌 변수도 업데이트
+                weekly_stats = local_data
+                
+                return {
+                    "success": True,
+                    "message": f"로컬 데이터가 Firebase로 성공적으로 이식되었습니다. (사용자: {len(local_data.get('users', []))}명)",
+                    "migrated_users": len(local_data.get("users", [])),
+                    "current_week": local_data.get("current_week")
+                }
+            else:
+                return {"success": False, "message": "Firebase 연결이 실패했습니다."}
+        else:
+            return {"success": False, "message": "로컬 데이터 파일이 존재하지 않습니다."}
+    except Exception as e:
+        return {"success": False, "message": f"마이그레이션 실패: {str(e)}"}
+
+@app.post("/api/migrate-lotto-history")
+def migrate_lotto_history():
+    """로또 역대 당첨 번호 CSV를 Firebase로 이식"""
+    global lotto_history_df, db
+    try:
+        if lotto_history_df.empty:
+            return {"success": False, "message": "로또 히스토리 데이터가 없습니다."}
+        
+        if not db:
+            return {"success": False, "message": "Firebase 연결이 실패했습니다."}
+        
+        # DataFrame을 딕셔너리 리스트로 변환
+        history_records = lotto_history_df.to_dict('records')
+        
+        # 배치로 Firebase에 저장 (효율성을 위해)
+        batch = db.batch()
+        collection_ref = db.collection('lotto_history')
+        
+        # 기존 데이터 확인
+        existing_docs = collection_ref.limit(1).get()
+        if existing_docs:
+            return {"success": False, "message": "로또 히스토리 데이터가 이미 Firebase에 존재합니다."}
+        
+        # 배치로 저장 (500개씩 제한)
+        for i, record in enumerate(history_records):
+            doc_ref = collection_ref.document(str(record['draw_no']))
+            batch.set(doc_ref, {
+                'draw_no': int(record['draw_no']),
+                'num1': int(record['num1']), 'num2': int(record['num2']),
+                'num3': int(record['num3']), 'num4': int(record['num4']),
+                'num5': int(record['num5']), 'num6': int(record['num6']),
+                'bonus': int(record['bonus']),
+                'migrated_at': datetime.now().isoformat()
+            })
+            
+            # 500개마다 배치 커밋
+            if (i + 1) % 500 == 0:
+                batch.commit()
+                batch = db.batch()
+        
+        # 남은 데이터 커밋
+        if len(history_records) % 500 != 0:
+            batch.commit()
+        
+        return {
+            "success": True,
+            "message": f"로또 역대 당첨번호 {len(history_records)}회차가 Firebase로 성공적으로 이식되었습니다.",
+            "migrated_records": len(history_records),
+            "latest_draw": int(lotto_history_df['draw_no'].max()) if not lotto_history_df.empty else 0
+        }
+        
+    except Exception as e:
+        return {"success": False, "message": f"로또 히스토리 마이그레이션 실패: {str(e)}"}
