@@ -160,9 +160,122 @@ def analyze_number_frequency(df):
     all_numbers = win_numbers_only.values.flatten()
     return pd.Series(all_numbers).value_counts()
 
+def calculate_prize_rank(user_numbers, winning_numbers, bonus_number):
+    """당첨 등수 계산"""
+    matching = len(set(user_numbers) & set(winning_numbers))
+    has_bonus = bonus_number in user_numbers
+    
+    if matching == 6:
+        return 1  # 1등
+    elif matching == 5 and has_bonus:
+        return 2  # 2등
+    elif matching == 5:
+        return 3  # 3등
+    elif matching == 4:
+        return 4  # 4등
+    elif matching == 3:
+        return 5  # 5등
+    else:
+        return 0  # 낙첨
+
+def check_weekly_winner():
+    """최신 추첨 결과와 사용자 선택을 비교하여 당첨자 확인"""
+    global weekly_stats, lotto_history_df
+    
+    if lotto_history_df.empty or not weekly_stats.get("users"):
+        return
+    
+    # 최신 추첨 결과 가져오기
+    latest_draw = lotto_history_df.iloc[-1]
+    winning_numbers = [int(latest_draw['num1']), int(latest_draw['num2']), int(latest_draw['num3']), 
+                      int(latest_draw['num4']), int(latest_draw['num5']), int(latest_draw['num6'])]
+    bonus_number = int(latest_draw['bonus'])
+    
+    # 각 사용자의 등수 계산
+    results = {"1등": 0, "2등": 0, "3등": 0, "4등": 0, "5등": 0, "낙첨": 0}
+    user_results = []
+    
+    for user in weekly_stats["users"]:
+        rank = calculate_prize_rank(user["numbers"], winning_numbers, bonus_number)
+        if rank == 1:
+            results["1등"] += 1
+        elif rank == 2:
+            results["2등"] += 1
+        elif rank == 3:
+            results["3등"] += 1
+        elif rank == 4:
+            results["4등"] += 1
+        elif rank == 5:
+            results["5등"] += 1
+        else:
+            results["낙첨"] += 1
+        
+        user_results.append({
+            "numbers": user["numbers"],
+            "strategy": user["strategy"],
+            "rank": rank,
+            "timestamp": user.get("timestamp", "")
+        })
+    
+    weekly_stats["results"] = {
+        "draw_no": int(latest_draw['draw_no']),
+        "winning_numbers": winning_numbers,
+        "bonus_number": bonus_number,
+        "summary": results,
+        "user_results": user_results,
+        "total_users": len(weekly_stats["users"])
+    }
+    
+    save_weekly_stats()
+
+def reset_weekly_stats():
+    """주간 통계 초기화 (Firebase 기반, 최적화된 히스토리 저장)"""
+    global weekly_stats, db
+    current_week = get_current_week()
+    
+    # 새로운 주가 시작되면 초기화
+    if weekly_stats.get("current_week") != current_week:
+        # 이전 주 데이터가 있고 당첨 결과가 있으면 요약본만 저장
+        if db and weekly_stats.get("users") and weekly_stats.get("results"):
+            try:
+                old_week = weekly_stats.get("current_week", "unknown")
+                results = weekly_stats.get("results", {})
+                
+                # 최소한의 통계 데이터만 저장 (int 타입 변환)
+                history_summary = {
+                    "week": old_week,
+                    "period": f"{old_week} 주차",
+                    "total_participants": len(weekly_stats.get("users", [])),
+                    "draw_no": int(results.get("draw_no", 0)) if results.get("draw_no") else None,
+                    "winning_numbers": results.get("winning_numbers"),
+                    "bonus_number": int(results.get("bonus_number", 0)) if results.get("bonus_number") else None,
+                    "winners": results.get("summary", {
+                        "1등": 0, "2등": 0, "3등": 0, "4등": 0, "5등": 0, "낙첨": 0
+                    }),
+                    "archived_at": datetime.now().isoformat()
+                }
+                
+                # history 컬렉션에 요약 저장 (개인 번호는 저장하지 않음)
+                backup_ref = db.collection('weekly_history').document(old_week)
+                backup_ref.set(history_summary)
+                print(f"주간 통계 요약 저장 완료: {old_week} ({history_summary['total_participants']}명 참여)")
+                
+            except Exception as e:
+                print(f"주간 히스토리 저장 실패: {e}")
+        
+        # 새로운 주 초기화 (개인 데이터 완전 삭제)
+        weekly_stats = {
+            "users": [],
+            "current_week": current_week,
+            "results": {}
+        }
+        save_weekly_stats()
+        print(f"주간 통계 초기화 완료: {current_week} (개인 데이터 삭제됨)")
+
 # 데이터 초기 로드
 load_data()
 load_weekly_stats()
+reset_weekly_stats()
 
 # --- Firebase Functions ---
 @https_fn.on_request()
@@ -237,6 +350,9 @@ def lotto_api(req: https_fn.Request) -> https_fn.Response:
                 strategy = body.get('strategy', 'unknown')
                 user_id = body.get('user_id', f'user_{len(weekly_stats["users"]) + 1}')
                 
+                # 주차 확인 및 필요시 초기화
+                reset_weekly_stats()
+                
                 # 사용자 선택 저장
                 user_data = {
                     "user_id": user_id,
@@ -264,16 +380,17 @@ def lotto_api(req: https_fn.Request) -> https_fn.Response:
                 )
         
         elif path == '/api/weekly-stats' and method == 'GET':
-            # 주간 통계 계산
-            current_week = get_current_week()
-            unique_users = set()
-            for user in weekly_stats.get("users", []):
-                unique_users.add(user.get("user_id", ""))
+            # 주차 확인
+            reset_weekly_stats()
+            
+            # 고유 참여자 수 계산 (user_id 기준)
+            unique_participants = len(set(user.get("user_id", "") for user in weekly_stats["users"] if user.get("user_id")))
+            total_selections = len(weekly_stats["users"])
             
             stats = {
-                "current_week": current_week,
-                "unique_participants": len(unique_users),
-                "total_selections": len(weekly_stats.get("users", [])),
+                "current_week": weekly_stats["current_week"],
+                "unique_participants": unique_participants,
+                "total_selections": total_selections,
                 "results": weekly_stats.get("results", {}),
                 "has_results": bool(weekly_stats.get("results"))
             }
@@ -315,6 +432,9 @@ def lotto_api(req: https_fn.Request) -> https_fn.Response:
                         # 데이터 다시 로드
                         load_data()
                         
+                        # 새로운 추첨 결과가 있으면 주간 당첨자 확인
+                        check_weekly_winner()
+                        
                         return https_fn.Response(
                             json.dumps({"message": f"Successfully updated from draw {last_saved_no + 1} to {latest_no}."}),
                             headers=headers
@@ -330,6 +450,27 @@ def lotto_api(req: https_fn.Request) -> https_fn.Response:
                     status=500,
                     headers=headers
                 )
+        
+        elif path == '/api/check-winners' and method == 'POST':
+            # 수동으로 당첨자 확인 (테스트용)
+            check_weekly_winner()
+            return https_fn.Response(
+                json.dumps({"message": "당첨자 확인이 완료되었습니다.", "results": weekly_stats.get("results", {})}),
+                headers=headers
+            )
+        
+        elif path == '/api/reset-week' and method == 'POST':
+            # 수동으로 주간 통계 초기화 (관리자용)
+            weekly_stats = {
+                "users": [],
+                "current_week": get_current_week(),
+                "results": {}
+            }
+            save_weekly_stats()
+            return https_fn.Response(
+                json.dumps({"message": "주간 통계가 초기화되었습니다."}),
+                headers=headers
+            )
         
         else:
             return https_fn.Response(
