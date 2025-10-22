@@ -149,12 +149,30 @@ def save_weekly_stats():
             pass
 
 def get_current_week():
-    """현재 주차를 반환 (로또 추첨일 기준)"""
+    """현재 주차를 반환 (로또 추첨일 기준: 토요일 오후 8시 45분)"""
     now = datetime.now()
-    # 로또는 매주 토요일 추첨 (6 = 토요일)
-    days_since_saturday = (now.weekday() + 2) % 7  # 토요일을 기준으로 계산
-    last_saturday = now - timedelta(days=days_since_saturday)
-    return last_saturday.strftime("%Y-%W")
+    
+    # 토요일 추첨시간 (오후 8시 45분)
+    draw_time_saturday = now.replace(hour=20, minute=45, second=0, microsecond=0)
+    
+    # 현재 요일 (0=월요일, 6=일요일)
+    current_weekday = now.weekday()
+    
+    # 이번 주 토요일 추첨시간 계산 (5 = 토요일)
+    days_to_saturday = (5 - current_weekday) % 7
+    this_saturday_draw = draw_time_saturday + timedelta(days=days_to_saturday)
+    
+    # 현재 시각이 이번 주 토요일 추첨시간 이전이면 이전 주 기준
+    if now < this_saturday_draw:
+        # 이전 주 토요일을 기준으로 주차 계산
+        reference_saturday = this_saturday_draw - timedelta(days=7)
+    else:
+        # 이번 주 토요일을 기준으로 주차 계산
+        reference_saturday = this_saturday_draw
+    
+    # 해당 토요일이 속한 주의 월요일을 기준으로 주차 계산
+    monday_of_week = reference_saturday - timedelta(days=5)  # 토요일에서 5일 전이 월요일
+    return f"{monday_of_week.year}-{monday_of_week.strftime('%U')}"
 
 def calculate_prize_rank(user_numbers, winning_numbers, bonus_number):
     """당첨 등수 계산"""

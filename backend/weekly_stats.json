@@ -1,6 +1,48 @@
 {
   "users": [
     {
+      "numbers": [2, 8, 28, 30, 37, 22],
+      "strategy": "top20",
+      "timestamp": "2025-10-22T10:00:00.000000",
+      "user_id": "winner_2nd_1"
+    },
+    {
+      "numbers": [2, 8, 28, 30, 41, 22],
+      "strategy": "random",
+      "timestamp": "2025-10-22T10:05:00.000000",
+      "user_id": "winner_2nd_2"
+    },
+    {
+      "numbers": [2, 8, 28, 30, 37, 15],
+      "strategy": "top20",
+      "timestamp": "2025-10-22T10:10:00.000000",
+      "user_id": "winner_3rd_1"
+    },
+    {
+      "numbers": [2, 8, 28, 37, 41, 15],
+      "strategy": "bottom20",
+      "timestamp": "2025-10-22T10:15:00.000000",
+      "user_id": "winner_3rd_2"
+    },
+    {
+      "numbers": [8, 28, 30, 37, 41, 15],
+      "strategy": "random",
+      "timestamp": "2025-10-22T10:20:00.000000",
+      "user_id": "winner_3rd_3"
+    },
+    {
+      "numbers": [2, 28, 30, 37, 41, 15],
+      "strategy": "top20",
+      "timestamp": "2025-10-22T10:25:00.000000",
+      "user_id": "winner_3rd_4"
+    },
+    {
+      "numbers": [2, 8, 30, 37, 41, 15],
+      "strategy": "bottom20",
+      "timestamp": "2025-10-22T10:30:00.000000",
+      "user_id": "winner_3rd_5"
+    },
+    {
       "numbers": [
         1,
         2,
