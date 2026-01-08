@@ -292,3 +292,32 @@ class WeeklyStatsManager:
         """주간 통계를 강제 초기화합니다."""
         self._stats = {"users": [], "current_week": get_current_week(), "results": {}}
         self.save()
+
+    def get_history(self, limit: int = 10) -> list[dict]:
+        """
+        저장된 주간 통계 히스토리를 가져옵니다.
+        
+        Args:
+            limit: 가져올 최대 개수
+            
+        Returns:
+            히스토리 리스트 (최신순)
+        """
+        if not self.db:
+            return []
+            
+        try:
+            from .constants import COLLECTION_WEEKLY_HISTORY
+            
+            collection_ref = self.db.collection(COLLECTION_WEEKLY_HISTORY)
+            docs = collection_ref.order_by('week', direction='DESCENDING').limit(limit).get()
+            
+            history = []
+            for doc in docs:
+                data = doc.to_dict()
+                history.append(data)
+                
+            return history
+        except Exception as e:
+            print(f"주간 히스토리 조회 실패: {e}")
+            return []

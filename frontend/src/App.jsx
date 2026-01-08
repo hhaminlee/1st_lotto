@@ -11,7 +11,6 @@ import RecommendTab from './components/tabs/RecommendTab';
 import AnalysisTab from './components/tabs/AnalysisTab';
 import HistoryTab from './components/tabs/HistoryTab';
 import WeeklyStatsTab from './components/tabs/WeeklyStatsTab';
-import UpdateTab from './components/tabs/UpdateTab';
 
 export default function App() {
   // 상태
@@ -20,6 +19,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [recommended, setRecommended] = useState([]);
   const [weeklyStats, setWeeklyStats] = useState(null);
+  const [weeklyHistory, setWeeklyHistory] = useState([]);
 
   // API 훅
   const {
@@ -31,7 +31,7 @@ export default function App() {
     fetchRecommendation,
     saveSelection,
     fetchWeeklyStats,
-    updateData,
+    fetchWeeklyHistory,
     clearState,
   } = useLottoApi();
 
@@ -77,20 +77,12 @@ export default function App() {
   const handleFetchWeeklyStats = async () => {
     clearState();
     try {
-      const data = await fetchWeeklyStats();
-      setWeeklyStats(data);
-    } catch (e) {
-      // 에러는 훅에서 처리
-    }
-  };
-
-  const handleUpdate = async () => {
-    clearState();
-    try {
-      await updateData();
-      // 업데이트 후 기록 새로고침
-      const data = await fetchHistory();
-      setHistory(data);
+      const [stats, history] = await Promise.all([
+        fetchWeeklyStats(),
+        fetchWeeklyHistory()
+      ]);
+      setWeeklyStats(stats);
+      setWeeklyHistory(history);
     } catch (e) {
       // 에러는 훅에서 처리
     }
@@ -128,13 +120,7 @@ export default function App() {
           <WeeklyStatsTab
             onFetch={handleFetchWeeklyStats}
             stats={weeklyStats}
-            loading={loading}
-          />
-        );
-      case 'update':
-        return (
-          <UpdateTab
-            onUpdate={handleUpdate}
+            history={weeklyHistory}
             loading={loading}
           />
         );

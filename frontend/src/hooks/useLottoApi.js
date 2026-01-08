@@ -66,13 +66,10 @@ export function useLottoApi() {
     withLoading(api.fetchWeeklyStats), [withLoading]);
 
   /**
-   * 데이터 업데이트
+   * 주간 통계 히스토리 조회
    */
-  const updateData = useCallback(async () => {
-    const result = await withLoading(api.updateData);
-    setMessage(result.message || result.error);
-    return result;
-  }, [withLoading]);
+  const fetchWeeklyHistory = useCallback(() => 
+    withLoading(api.fetchWeeklyHistory), [withLoading]);
 
   /**
    * 상태 초기화
@@ -91,7 +88,7 @@ export function useLottoApi() {
     fetchRecommendation,
     saveSelection,
     fetchWeeklyStats,
-    updateData,
+    fetchWeeklyHistory,
     clearState,
   };
 }

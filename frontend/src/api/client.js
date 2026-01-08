@@ -72,8 +72,8 @@ export async function fetchWeeklyStats() {
 }
 
 /**
- * 데이터 업데이트
+ * 주간 통계 히스토리 조회
  */
-export async function updateData() {
-  return request('/api/update', { method: 'POST' });
+export async function fetchWeeklyHistory() {
+  return request('/api/weekly-history');
 }

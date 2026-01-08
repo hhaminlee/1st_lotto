@@ -226,3 +226,8 @@ def manual_reset_week():
     """주간 통계 초기화 (관리자용)"""
     stats_manager.reset()
     return {"message": "주간 통계가 초기화되었습니다."}
+
+@app.get("/api/weekly-history")
+def get_weekly_history():
+    """주간 통계 히스토리 조회"""
+    return stats_manager.get_history()

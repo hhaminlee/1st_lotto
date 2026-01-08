@@ -37,7 +37,6 @@ export const TABS = [
   { id: 'analyze', label: '빈도 분석' },
   { id: 'history', label: '추첨 기록' },
   { id: 'weekly', label: '주간 통계' },
-  { id: 'update', label: '데이터 업데이트' },
 ];
 
 /**
