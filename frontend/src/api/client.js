@@ -3,7 +3,9 @@
  * 백엔드 API와 통신하는 함수들
  */
 
-const API_BASE_URL = import.meta.env.PROD ? '' : 'http://127.0.0.1:8000';
+// Vite 프록시(개발) 또는 Firebase Rewrite(배포)가 /api 요청을 처리하므로
+// 항상 상대 경로를 사용합니다.
+const API_BASE_URL = '';
 
 /**
  * API 요청을 수행합니다.
